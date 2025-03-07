@@ -1,5 +1,7 @@
 package com.example.redissessionmanagement.security;
 
+import com.example.redissessionmanagement.dto.TokenPair;
+import com.example.redissessionmanagement.repository.TokenRepository;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
@@ -20,6 +22,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class JwtTokenProvider {
 
+    private final TokenRepository tokenRepository;
     @Value("${jwt.secret}")
     private String jwtSecret;
 
@@ -33,8 +36,17 @@ public class JwtTokenProvider {
     private static final String TOKEN_BLACKLIST_PREFIX = "blacklist:";
     private static final String USER_TOKEN_PREFIX = "user_tokens:";
 
+    public JwtTokenProvider(TokenRepository tokenRepository) {
+        this.tokenRepository = tokenRepository;
+    }
+
+    public TokenPair generateTokenPair(Authentication authentication) {
+        String accessToken = generateAccessToken(authentication);
+        String refreshToken = generateRefreshToken(authentication);
+        return new TokenPair(accessToken, refreshToken, jwtExpirationMS, refreshTokenExpirationMS);
+    }
     // Generate JWT Token
-    public String generateToken(Authentication authentication) {
+    public String generateAccessToken(Authentication authentication) {
         UserDetails userPrincipal = (UserDetails) authentication.getPrincipal();
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpirationMS);
@@ -51,12 +63,10 @@ public class JwtTokenProvider {
                 .signWith(getSecretKey())
                 .compact();
 
-
-        storeTokenInRedis(userPrincipal.getUsername(), token, jwtExpirationMS);
         return token;
     }
 
-    // Generate Refresh TOken
+    // Generate Refresh Token
     public String generateRefreshToken(Authentication authentication) {
         UserDetails userPrincipal = (UserDetails) authentication.getPrincipal();
         Date now = new Date();
@@ -70,7 +80,6 @@ public class JwtTokenProvider {
                 .signWith(getSecretKey())
                 .compact();
 
-        storeTokenInRedis(userPrincipal.getUsername()+":refresh", refreshToken, refreshTokenExpirationMS);
         return refreshToken;
     }
 
@@ -84,20 +93,37 @@ public class JwtTokenProvider {
                 .getSubject();
     }
 
+    public String getRolesFromToken(String token) {
+        Claims claims = Jwts.parser()
+                .verifyWith(getSecretKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        return claims.get("roles", String.class);
+    }
+
     // Validate Token
     public boolean validateToken(String token) {
         // First check if token is in blacklist
-        if(isTokenBlacklisted(token)) {
+        if(tokenRepository.isAccessTokenBlacklisted(token)) {
+            log.info("Token is blacklisted");
+            return false;
+        }
+
+        if(tokenRepository.isRefreshTokenBlacklisted(token)) {
             log.info("Token is blacklisted");
             return false;
         }
 
         try {
+
             Jwts.parser()
                     .verifyWith(getSecretKey())
                     .build()
                     .parseSignedClaims(token);
             return true;
+
         } catch (SignatureException e) {
             log.error("Invalid JWT signature");
         } catch (MalformedJwtException e) {
@@ -112,14 +138,6 @@ public class JwtTokenProvider {
         return false;
     }
 
-    public void blackListToken(String token) {
-
-
-    }
-
-    public void logoutAllUserSessions(String username) {
-
-    }
 
     public String extractTokenFromHeader(String bearerToken) {
         if (bearerToken !=null && bearerToken.startsWith(TOKEN_PREFIX)) {
@@ -128,13 +146,6 @@ public class JwtTokenProvider {
         return null;
     }
 
-    private boolean isTokenBlacklisted(String token) {
-        return false;
-    }
-
-    private void storeTokenInRedis(String key, String token, long expirationMS) {
-
-    }
     SecretKey getSecretKey() {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
     }
