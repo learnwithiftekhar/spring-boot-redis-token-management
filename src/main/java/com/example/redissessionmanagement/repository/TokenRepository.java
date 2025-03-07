@@ -80,14 +80,15 @@ public class TokenRepository {
      * Remove all tokens for a user (complete logout)
      */
     public void removeAllTokens(String username) {
-        String accessKey = ACCESS_TOKEN_KEY_PREFIX + username;
-        String refreshKey = REFRESH_TOKEN_KEY_PREFIX + username;
-
         String accessToken = getAccessToken(username);
         String refreshToken = getRefreshToken(username);
 
-        redisTemplate.delete(accessToken);
-        redisTemplate.delete(refreshToken);
+        // Remove Tokens
+        String accessKey = ACCESS_TOKEN_KEY_PREFIX + username;
+        String refreshKey = REFRESH_TOKEN_KEY_PREFIX + username;
+
+        redisTemplate.delete(accessKey);
+        redisTemplate.delete(refreshKey);
 
         // Blacklist tokens if they exist
         if(accessToken != null) {

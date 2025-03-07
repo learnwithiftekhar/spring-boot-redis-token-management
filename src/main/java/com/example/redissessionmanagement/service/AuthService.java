@@ -106,7 +106,7 @@ public class AuthService {
 
     public void logout() {
         // Get Current authenticated User
-        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
         // Remove all tokens for this user
         tokenRepository.removeAllTokens(userDetails.getUsername());
